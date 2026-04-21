@@ -56,9 +56,21 @@ def register(data:User):
 @app.post("/login")
 def login(data:User):
 
+    # 管理员账号
+    if data.username == "admin" and data.password == "123456":
+        return {
+            "msg":"登录成功",
+            "role":"admin",
+            "currency":"CNY"
+        }
+
     cursor.execute(
-        "select currency from users where username=? and password=?",
-        (data.username,data.password)
+        """
+        select currency
+        from users
+        where username=? and password=?
+        """,
+        (data.username, data.password)
     )
 
     row = cursor.fetchone()
@@ -66,10 +78,13 @@ def login(data:User):
     if row:
         return {
             "msg":"登录成功",
+            "role":"user",
             "currency":row[0]
         }
     else:
-        return {"msg":"账号密码错误"}
+        return {
+            "msg":"账号密码错误"
+        }
 
 
 # 保存记录
