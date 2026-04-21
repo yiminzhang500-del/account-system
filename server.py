@@ -4,6 +4,7 @@ import sqlite3
 
 app = FastAPI()
 
+# 数据库连接
 conn = sqlite3.connect("data.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -33,8 +34,18 @@ date TEXT
 
 conn.commit()
 
+# 自动创建管理员账号
+cursor.execute("""
+INSERT OR IGNORE INTO users
+(username,password,currency,role)
+VALUES
+('admin','123456','CNY','admin')
+""")
 
-# 注册
+conn.commit()
+
+
+# ---------------- 注册 ----------------
 class User(BaseModel):
     username:str
     password:str
@@ -45,11 +56,12 @@ class User(BaseModel):
 def register(data:User):
 
     try:
+
         cursor.execute(
             """
-            insert into users
+            INSERT INTO users
             (username,password,currency,role)
-            values(?,?,?,?)
+            VALUES(?,?,?,?)
             """,
             (
                 data.username,
@@ -64,18 +76,19 @@ def register(data:User):
         return {"msg":"注册成功"}
 
     except:
+
         return {"msg":"账号已存在"}
 
 
-# 登录
+# ---------------- 登录 ----------------
 @app.post("/login")
 def login(data:User):
 
     cursor.execute(
         """
-        select role,currency
-        from users
-        where username=? and password=?
+        SELECT role,currency
+        FROM users
+        WHERE username=? AND password=?
         """,
         (
             data.username,
@@ -86,6 +99,7 @@ def login(data:User):
     row = cursor.fetchone()
 
     if row:
+
         return {
             "msg":"登录成功",
             "role":row[0],
@@ -95,7 +109,7 @@ def login(data:User):
     return {"msg":"账号密码错误"}
 
 
-# 新增记录
+# ---------------- 新增记录 ----------------
 class Record(BaseModel):
     username:str
     person:str
@@ -110,9 +124,9 @@ def add_record(data:Record):
 
     cursor.execute(
         """
-        insert into records
+        INSERT INTO records
         (username,person,type,money,remark,date)
-        values(?,?,?,?,?,?)
+        VALUES(?,?,?,?,?,?)
         """,
         (
             data.username,
@@ -129,25 +143,27 @@ def add_record(data:Record):
     return {"msg":"成功"}
 
 
-# 获取记录
+# ---------------- 获取记录 ----------------
 @app.get("/get_records")
 def get_records(username:str):
 
     cursor.execute(
         """
-        select * from records
-        where username=?
-        order by id desc
+        SELECT *
+        FROM records
+        WHERE username=?
+        ORDER BY id DESC
         """,
         (username,)
     )
 
     rows = cursor.fetchall()
 
-    data = []
+    arr = []
 
     for row in rows:
-        data.append({
+
+        arr.append({
             "id":row[0],
             "username":row[1],
             "person":row[2],
@@ -157,18 +173,18 @@ def get_records(username:str):
             "date":row[6]
         })
 
-    return data
+    return arr
 
 
-# 管理员查看全部用户
+# ---------------- 全部用户 ----------------
 @app.get("/all_users")
 def all_users():
 
     cursor.execute(
         """
-        select username,currency,role
-        from users
-        order by id desc
+        SELECT username,currency,role
+        FROM users
+        ORDER BY id DESC
         """
     )
 
@@ -177,6 +193,7 @@ def all_users():
     arr = []
 
     for row in rows:
+
         arr.append({
             "username":row[0],
             "currency":row[1],
@@ -186,18 +203,32 @@ def all_users():
     return arr
 
 
-# 删除用户（同时删除账单）
+# ---------------- 删除用户 ----------------
 @app.get("/delete_user")
 def delete_user(username:str):
 
     cursor.execute(
-        "delete from users where username=?",
+        "DELETE FROM users WHERE username=?",
         (username,)
     )
 
     cursor.execute(
-        "delete from records where username=?",
+        "DELETE FROM records WHERE username=?",
         (username,)
+    )
+
+    conn.commit()
+
+    return {"msg":"删除成功"}
+
+
+# ---------------- 删除记录 ----------------
+@app.get("/delete_record")
+def delete_record(id:int):
+
+    cursor.execute(
+        "DELETE FROM records WHERE id=?",
+        (id,)
     )
 
     conn.commit()
