@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS users(
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 username TEXT UNIQUE,
 password TEXT,
-currency TEXT DEFAULT 'CNY'
+currency TEXT DEFAULT 'CNY',
+role TEXT DEFAULT 'user'
 )
 """)
 
@@ -37,17 +38,31 @@ conn.commit()
 class User(BaseModel):
     username:str
     password:str
-    currency:str
+    currency:str = "CNY"
+
 
 @app.post("/register")
 def register(data:User):
+
     try:
         cursor.execute(
-            "insert into users(username,password,currency) values(?,?,?)",
-            (data.username,data.password,data.currency)
+            """
+            insert into users
+            (username,password,currency,role)
+            values(?,?,?,?)
+            """,
+            (
+                data.username,
+                data.password,
+                data.currency,
+                "user"
+            )
         )
+
         conn.commit()
+
         return {"msg":"注册成功"}
+
     except:
         return {"msg":"账号已存在"}
 
@@ -56,35 +71,29 @@ def register(data:User):
 @app.post("/login")
 def login(data:User):
 
-    # 管理员账号
-    if data.username == "admin" and data.password == "123456":
-        return {
-            "msg":"登录成功",
-            "role":"admin",
-            "currency":"CNY"
-        }
-
     cursor.execute(
         """
-        select currency
+        select role,currency
         from users
         where username=? and password=?
         """,
-        (data.username, data.password)
+        (
+            data.username,
+            data.password
+        )
     )
 
     row = cursor.fetchone()
 
     if row:
+
         return {
             "msg":"登录成功",
-            "role":"user",
-            "currency":row[0]
+            "role":row[0],
+            "currency":row[1]
         }
-    else:
-        return {
-            "msg":"账号密码错误"
-        }
+
+    return {"msg":"账号密码错误"}
 
 
 # 保存记录
@@ -96,25 +105,29 @@ class Record(BaseModel):
     remark:str
     date:str
 
-@app.post("/save_record")
-def save_record(data:Record):
 
-    cursor.execute("""
-    insert into records
-    (username,person,type,money,remark,date)
-    values(?,?,?,?,?,?)
-    """,(
-        data.username,
-        data.person,
-        data.type,
-        data.money,
-        data.remark,
-        data.date
-    ))
+@app.post("/add_record")
+def add_record(data:Record):
+
+    cursor.execute(
+        """
+        insert into records
+        (username,person,type,money,remark,date)
+        values(?,?,?,?,?,?)
+        """,
+        (
+            data.username,
+            data.person,
+            data.type,
+            data.money,
+            data.remark,
+            data.date
+        )
+    )
 
     conn.commit()
 
-    return {"msg":"保存成功"}
+    return {"msg":"成功"}
 
 
 # 获取记录
@@ -122,7 +135,11 @@ def save_record(data:Record):
 def get_records(username:str):
 
     cursor.execute(
-        "select * from records where username=? order by id desc",
+        """
+        select * from records
+        where username=?
+        order by id desc
+        """,
         (username,)
     )
 
@@ -141,36 +158,29 @@ def get_records(username:str):
             "date":row[6]
         })
 
-    @app.get("/all_users")
+    return data
+
+
+# 管理员全部用户
+@app.get("/all_users")
 def all_users():
 
     cursor.execute(
-        "select username,currency from users order by id desc"
+        """
+        select username,currency,role
+        from users
+        """
     )
 
     rows = cursor.fetchall()
 
-    data = []
+    arr = []
 
     for row in rows:
-        data.append({
+        arr.append({
             "username":row[0],
-            "currency":row[1]
+            "currency":row[1],
+            "role":row[2]
         })
-@app.get("/delete_user")
-def delete_user(username:str):
 
-    cursor.execute(
-        "delete from users where username=?",
-        (username,)
-    )
-
-    cursor.execute(
-        "delete from records where username=?",
-        (username,)
-    )
-
-    conn.commit()
-
-    return {"msg":"删除成功"}
- 
+    return arr
