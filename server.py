@@ -1,11 +1,14 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import sqlite3
+import os
 
 app = FastAPI()
 
-# 数据库连接
-conn = sqlite3.connect("data.db", check_same_thread=False)
+# ================= 数据库 =================
+DB_NAME = "data.db"
+
+conn = sqlite3.connect(DB_NAME, check_same_thread=False)
 cursor = conn.cursor()
 
 # 用户表
@@ -33,12 +36,28 @@ date TEXT
 conn.commit()
 
 
-# ================= 注册 =================
+# ================= 数据模型 =================
 class User(BaseModel):
     username: str
     password: str
 
 
+class Record(BaseModel):
+    username: str
+    person: str
+    type: str
+    money: str
+    remark: str
+    date: str
+
+
+# ================= 首页 =================
+@app.get("/")
+def home():
+    return {"msg": "server ok"}
+
+
+# ================= 注册 =================
 @app.post("/register")
 def register(data: User):
 
@@ -76,16 +95,6 @@ def login(data: User):
 
 
 # ================= 保存记录 =================
-class Record(BaseModel):
-    username: str
-    person: str
-    type: str
-    money: str
-    remark: str
-    date: str
-
-
-# 安卓端调用的是 /add_record
 @app.post("/add_record")
 def add_record(data: Record):
 
@@ -113,7 +122,7 @@ def add_record(data: Record):
         return {"msg": str(e)}
 
 
-# 兼容旧版本接口 /save_record
+# 兼容旧接口
 @app.post("/save_record")
 def save_record(data: Record):
     return add_record(data)
@@ -147,7 +156,11 @@ def get_records(username: str):
     return arr
 
 
-# ================= 首页测试 =================
-@app.get("/")
-def home():
-    return {"msg": "server ok"}
+# ================= 清空记录（测试用） =================
+@app.get("/clear_records")
+def clear_records():
+
+    cursor.execute("DELETE FROM records")
+    conn.commit()
+
+    return {"msg": "记录已清空"}
