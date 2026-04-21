@@ -4,10 +4,12 @@ import sqlite3
 
 app = FastAPI()
 
+# 创建数据库
 conn = sqlite3.connect("data.db", check_same_thread=False)
-cur = conn.cursor()
+cursor = conn.cursor()
 
-cur.execute("""
+# 用户表
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS users(
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 username TEXT UNIQUE,
@@ -15,103 +17,111 @@ password TEXT
 )
 """)
 
-cur.execute("""
+# 记录表
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS records(
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 username TEXT,
+person TEXT,
 type TEXT,
 money TEXT,
 remark TEXT,
-date TEXT,
-currency TEXT
+date TEXT
 )
 """)
 
 conn.commit()
 
 
+# ---------------- 注册 ----------------
 class User(BaseModel):
-    username: str
-    password: str
-
-
-class Record(BaseModel):
-    username: str
-    type: str
-    money: str
-    remark: str
-    date: str
-    currency: str
-
-
-@app.get("/")
-def home():
-    return {"msg": "server ok"}
-
+    username:str
+    password:str
 
 @app.post("/register")
-def register(user: User):
+def register(data:User):
     try:
-        cur.execute(
+        cursor.execute(
             "insert into users(username,password) values(?,?)",
-            (user.username, user.password)
+            (data.username,data.password)
         )
         conn.commit()
-        return {"msg": "注册成功"}
+        return {"msg":"注册成功"}
     except:
-        return {"msg": "账号已存在"}
+        return {"msg":"账号已存在"}
 
 
+# ---------------- 登录 ----------------
 @app.post("/login")
-def login(user: User):
-    cur.execute(
+def login(data:User):
+
+    cursor.execute(
         "select * from users where username=? and password=?",
-        (user.username, user.password)
+        (data.username,data.password)
     )
-    data = cur.fetchone()
 
-    if data:
-        return {"msg": "登录成功"}
+    if cursor.fetchone():
+        return {"msg":"登录成功"}
     else:
-        return {"msg": "账号密码错误"}
+        return {"msg":"账号密码错误"}
 
 
-@app.post("/add_record")
-def add_record(r: Record):
-    cur.execute("""
-    insert into records(username,type,money,remark,date,currency)
-    values(?,?,?,?,?,?)
-    """, (
-        r.username,
-        r.type,
-        r.money,
-        r.remark,
-        r.date,
-        r.currency
-    ))
-    conn.commit()
-    return {"msg": "成功"}
+# ---------------- 保存记录 ----------------
+class Record(BaseModel):
+    username:str
+    person:str
+    type:str
+    money:str
+    remark:str
+    date:str
+
+@app.post("/save_record")
+def save_record(data:Record):
+
+    try:
+        cursor.execute("""
+        insert into records
+        (username,person,type,money,remark,date)
+        values(?,?,?,?,?,?)
+        """,(
+            data.username,
+            data.person,
+            data.type,
+            data.money,
+            data.remark,
+            data.date
+        ))
+
+        conn.commit()
+
+        return {"msg":"保存成功"}
+
+    except Exception as e:
+        return {"msg":str(e)}
 
 
+# ---------------- 获取记录 ----------------
 @app.get("/get_records")
-def get_records(username: str):
-    cur.execute(
-        "select id,type,money,remark,date,currency from records where username=? order by id desc",
+def get_records(username:str):
+
+    cursor.execute(
+        "select * from records where username=? order by id desc",
         (username,)
     )
 
-    rows = cur.fetchall()
+    rows = cursor.fetchall()
 
-    arr = []
+    data = []
 
     for row in rows:
-        arr.append({
-            "id": row[0],
-            "type": row[1],
-            "money": row[2],
-            "remark": row[3],
-            "date": row[4],
-            "currency": row[5]
+        data.append({
+            "id":row[0],
+            "username":row[1],
+            "person":row[2],
+            "type":row[3],
+            "money":row[4],
+            "remark":row[5],
+            "date":row[6]
         })
 
-    return arr
+    return data
