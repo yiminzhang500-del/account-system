@@ -86,7 +86,6 @@ def login(data:User):
     row = cursor.fetchone()
 
     if row:
-
         return {
             "msg":"登录成功",
             "role":row[0],
@@ -96,7 +95,7 @@ def login(data:User):
     return {"msg":"账号密码错误"}
 
 
-# 保存记录
+# 新增记录
 class Record(BaseModel):
     username:str
     person:str
@@ -161,7 +160,7 @@ def get_records(username:str):
     return data
 
 
-# 管理员全部用户
+# 管理员查看全部用户
 @app.get("/all_users")
 def all_users():
 
@@ -169,6 +168,7 @@ def all_users():
         """
         select username,currency,role
         from users
+        order by id desc
         """
     )
 
@@ -184,3 +184,22 @@ def all_users():
         })
 
     return arr
+
+
+# 删除用户（同时删除账单）
+@app.get("/delete_user")
+def delete_user(username:str):
+
+    cursor.execute(
+        "delete from users where username=?",
+        (username,)
+    )
+
+    cursor.execute(
+        "delete from records where username=?",
+        (username,)
+    )
+
+    conn.commit()
+
+    return {"msg":"删除成功"}
