@@ -1,389 +1,222 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-import sqlite3
-import datetime
+package com.company.accountapp;
 
-app = FastAPI()
+import androidx.appcompat.app.AppCompatActivity;
 
-conn = sqlite3.connect("data.db", check_same_thread=False)
-cur = conn.cursor()
+import android.content.Intent;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.os.Bundle;
+import android.os.Environment;
+import android.widget.Button;
+import android.widget.TextView;
+import android.widget.Toast;
 
-# =========================
-# 用户表
-# =========================
-cur.execute("""
-CREATE TABLE IF NOT EXISTS users(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-username TEXT UNIQUE,
-password TEXT,
-phone TEXT UNIQUE,
-currency TEXT,
-role TEXT,
-status TEXT,
-can_export INTEGER,
-can_delete INTEGER,
-create_time TEXT
-)
-""")
+import java.io.File;
+import java.io.FileOutputStream;
 
-# =========================
-# 注册申请表
-# =========================
-cur.execute("""
-CREATE TABLE IF NOT EXISTS register_requests(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-username TEXT,
-password TEXT,
-phone TEXT,
-currency TEXT,
-time TEXT
-)
-""")
+public class HomeActivity extends AppCompatActivity {
 
-# =========================
-# 账目表
-# =========================
-cur.execute("""
-CREATE TABLE IF NOT EXISTS records(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-username TEXT,
-person TEXT,
-type TEXT,
-money TEXT,
-remark TEXT,
-date TEXT,
-image TEXT
-)
-""")
+    TextView tvWelcome, tvIncome, tvPay, tvMoney;
+    TextView tvMonthIncome, tvMonthPay, tvMonthMoney;
 
-# =========================
-# 日志表
-# =========================
-cur.execute("""
-CREATE TABLE IF NOT EXISTS logs(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-username TEXT,
-action TEXT,
-time TEXT
-)
-""")
+    Button btnAdd, btnList, btnRequest, btnLogout, btnChart, btnExcel;
 
-conn.commit()
+    DBHelper helper;
+    String username = "";
 
-# =========================
-# 默认管理员账号
-# =========================
-cur.execute("SELECT * FROM users WHERE username='admin'")
-row = cur.fetchone()
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_home);
 
-if not row:
-    cur.execute("""
-    INSERT INTO users(
-    username,password,phone,currency,role,status,
-    can_export,can_delete,create_time
-    ) VALUES(?,?,?,?,?,?,?,?,?)
-    """,(
-        "admin",
-        "123456",
-        "0000000000",
-        "AED",
-        "admin",
-        "active",
-        1,
-        1,
-        str(datetime.datetime.now())
-    ))
-    conn.commit()
+        tvWelcome = findViewById(R.id.tvWelcome);
+        tvIncome = findViewById(R.id.tvIncome);
+        tvPay = findViewById(R.id.tvPay);
+        tvMoney = findViewById(R.id.tvMoney);
 
+        tvMonthIncome = findViewById(R.id.tvMonthIncome);
+        tvMonthPay = findViewById(R.id.tvMonthPay);
+        tvMonthMoney = findViewById(R.id.tvMonthMoney);
 
-# =========================
-# 数据模型
-# =========================
-class RegisterModel(BaseModel):
-    username:str
-    password:str
-    phone:str
-    currency:str
+        btnAdd = findViewById(R.id.btnAdd);
+        btnList = findViewById(R.id.btnList);
+        btnRequest = findViewById(R.id.btnRequest);
+        btnLogout = findViewById(R.id.btnLogout);
+        btnChart = findViewById(R.id.btnChart);
+        btnExcel = findViewById(R.id.btnExcel);
 
-class LoginModel(BaseModel):
-    username:str
-    password:str
+        helper = new DBHelper(this);
 
-class RecordModel(BaseModel):
-    username:str
-    person:str
-    type:str
-    money:str
-    remark:str
-    date:str
-    image:str=""
+        username = getIntent().getStringExtra("username");
+        if (username == null) username = "";
 
-class AdminModel(BaseModel):
-    admin:str
-    password:str
+        tvWelcome.setText("欢迎你，" + username);
 
+        loadData();
 
-# =========================
-# 首页
-# =========================
-@app.get("/")
-def home():
-    return {"msg":"服务器运行成功"}
+        btnAdd.setOnClickListener(v ->
+                startActivity(new Intent(this, AddRecordActivity.class)));
 
+        btnList.setOnClickListener(v ->
+                startActivity(new Intent(this, RecordListActivity.class)));
 
-# =========================
-# 注册申请
-# =========================
-@app.post("/register")
-def register(data:RegisterModel):
+        btnRequest.setOnClickListener(v ->
+                startActivity(new Intent(this, RequestMoneyActivity.class)));
 
-    cur.execute(
-        "SELECT * FROM users WHERE username=?",
-        (data.username,)
-    )
+        btnChart.setOnClickListener(v ->
+                startActivity(new Intent(this, ChartActivity.class)));
 
-    if cur.fetchone():
-        return {"msg":"用户名已存在"}
+        btnExcel.setOnClickListener(v ->
+                exportCSV());
 
-    cur.execute(
-        "SELECT * FROM register_requests WHERE username=?",
-        (data.username,)
-    )
-
-    if cur.fetchone():
-        return {"msg":"已提交审核"}
-
-    cur.execute("""
-    INSERT INTO register_requests(
-    username,password,phone,currency,time
-    ) VALUES(?,?,?,?,?)
-    """,(
-        data.username,
-        data.password,
-        data.phone,
-        data.currency,
-        str(datetime.datetime.now())
-    ))
-
-    conn.commit()
-
-    return {"msg":"注册申请已提交，等待管理员审核"}
-
-
-# =========================
-# 登录
-# =========================
-@app.post("/login")
-def login(data:LoginModel):
-
-    cur.execute("""
-    SELECT * FROM users
-    WHERE username=? AND password=?
-    """,(
-        data.username,
-        data.password
-    ))
-
-    row = cur.fetchone()
-
-    if not row:
-        return {"msg":"账号密码错误"}
-
-    if row[6] != "active":
-        return {"msg":"账号已被限制登录"}
-
-    cur.execute("""
-    INSERT INTO logs(username,action,time)
-    VALUES(?,?,?)
-    """,(
-        data.username,
-        "登录系统",
-        str(datetime.datetime.now())
-    ))
-    conn.commit()
-
-    return {
-        "msg":"登录成功",
-        "role":row[5],
-        "currency":row[4]
+        btnLogout.setOnClickListener(v -> finish());
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        loadData();
+    }
 
-# =========================
-# 添加记录
-# =========================
-@app.post("/add_record")
-def add_record(data:RecordModel):
+    private void loadData() {
 
-    cur.execute("""
-    INSERT INTO records(
-    username,person,type,money,remark,date,image
-    ) VALUES(?,?,?,?,?,?,?)
-    """,(
-        data.username,
-        data.person,
-        data.type,
-        data.money,
-        data.remark,
-        data.date,
-        data.image
-    ))
+        double income = 0;
+        double pay = 0;
+        double monthIncome = 0;
+        double monthPay = 0;
 
-    cur.execute("""
-    INSERT INTO logs(username,action,time)
-    VALUES(?,?,?)
-    """,(
-        data.username,
-        "新增记录",
-        str(datetime.datetime.now())
-    ))
+        String month =
+                new java.text.SimpleDateFormat("yyyy-MM")
+                        .format(new java.util.Date());
 
-    conn.commit()
+        SQLiteDatabase db =
+                helper.getReadableDatabase();
 
-    return {"msg":"添加成功"}
+        Cursor c = db.rawQuery(
+                "select type,money,remark,date,currency from records",
+                null
+        );
 
+        while (c.moveToNext()) {
 
-# =========================
-# 查看个人记录
-# =========================
-@app.get("/get_records")
-def get_records(username:str):
+            String type = c.getString(0);
+            String moneyStr = c.getString(1);
+            String date = c.getString(3);
 
-    cur.execute("""
-    SELECT * FROM records
-    WHERE username=?
-    ORDER BY id DESC
-    """,(username,))
+            double money = 0;
 
-    rows = cur.fetchall()
+            try {
+                money = Double.parseDouble(moneyStr);
+            } catch (Exception e) {
+                money = 0;
+            }
 
-    arr = []
+            if ("收入".equals(type)) {
+                income += money;
+            } else {
+                pay += money;
+            }
 
-    for r in rows:
-        arr.append({
-            "id":r[0],
-            "username":r[1],
-            "person":r[2],
-            "type":r[3],
-            "money":r[4],
-            "remark":r[5],
-            "date":r[6],
-            "image":r[7]
-        })
+            if (date != null && date.startsWith(month)) {
 
-    return arr
+                if ("收入".equals(type)) {
+                    monthIncome += money;
+                } else {
+                    monthPay += money;
+                }
+            }
+        }
 
+        c.close();
 
-# =========================
-# 管理员查看注册申请
-# =========================
-@app.get("/admin_requests")
-def admin_requests():
+        tvIncome.setText("总收入：" + income);
+        tvPay.setText("总支出：" + pay);
+        tvMoney.setText("当前余额：" + (income - pay));
 
-    cur.execute("""
-    SELECT * FROM register_requests
-    ORDER BY id DESC
-    """)
+        tvMonthIncome.setText("本月收入：" + monthIncome);
+        tvMonthPay.setText("本月支出：" + monthPay);
+        tvMonthMoney.setText("本月结余：" + (monthIncome - monthPay));
+    }
 
-    rows = cur.fetchall()
+    // 导出到 Download 文件夹
+    private void exportCSV() {
 
-    arr=[]
+        try {
 
-    for r in rows:
-        arr.append({
-            "id":r[0],
-            "username":r[1],
-            "phone":r[3],
-            "currency":r[4],
-            "time":r[5]
-        })
+            SQLiteDatabase db =
+                    helper.getReadableDatabase();
 
-    return arr
+            Cursor c = db.rawQuery(
+                    "select type,money,remark,date,currency from records",
+                    null
+            );
 
+            File dir =
+                    Environment.getExternalStoragePublicDirectory(
+                            Environment.DIRECTORY_DOWNLOADS
+                    );
 
-# =========================
-# 管理员审核通过
-# =========================
-@app.get("/approve")
-def approve(id:int):
+            if (dir != null && !dir.exists()) {
+                dir.mkdirs();
+            }
 
-    cur.execute(
-        "SELECT * FROM register_requests WHERE id=?",
-        (id,)
-    )
+            File file =
+                    new File(dir, "AccountReport.csv");
 
-    row = cur.fetchone()
+            FileOutputStream fos =
+                    new FileOutputStream(file);
 
-    if not row:
-        return {"msg":"申请不存在"}
+            // 防止Excel中文乱码
+            fos.write(0xEF);
+            fos.write(0xBB);
+            fos.write(0xBF);
 
-    cur.execute("""
-    INSERT INTO users(
-    username,password,phone,currency,
-    role,status,can_export,can_delete,create_time
-    ) VALUES(?,?,?,?,?,?,?,?,?)
-    """,(
-        row[1],
-        row[2],
-        row[3],
-        row[4],
-        "user",
-        "active",
-        1,
-        0,
-        str(datetime.datetime.now())
-    ))
+            String title =
+                    "类型,金额,备注,日期,货币单位\r\n";
 
-    cur.execute(
-        "DELETE FROM register_requests WHERE id=?",
-        (id,)
-    )
+            fos.write(title.getBytes("UTF-8"));
 
-    conn.commit()
+            while (c.moveToNext()) {
 
-    return {"msg":"审核通过"}
+                String type = c.getString(0);
+                String money = c.getString(1);
+                String remark = c.getString(2);
+                String date = c.getString(3);
+                String currency = c.getString(4);
 
+                if (remark == null) remark = "";
+                remark = remark.replace(",", "，");
 
-# =========================
-# 管理员禁用账号
-# =========================
-@app.get("/ban_user")
-def ban_user(username:str):
+                String line =
+                        type + "," +
+                        money + "," +
+                        remark + "," +
+                        date + "," +
+                        currency +
+                        "\r\n";
 
-    if username=="admin":
-        return {"msg":"管理员不可禁用"}
+                fos.write(line.getBytes("UTF-8"));
+            }
 
-    cur.execute("""
-    UPDATE users
-    SET status='ban'
-    WHERE username=?
-    """,(username,))
+            c.close();
+            fos.flush();
+            fos.close();
 
-    conn.commit()
+            Toast.makeText(
+                    this,
+                    "导出成功：Download/AccountReport.csv",
+                    Toast.LENGTH_LONG
+            ).show();
 
-    return {"msg":"已禁用用户"}
+        } catch (Exception e) {
 
+            e.printStackTrace();
 
-# =========================
-# 管理员查看日志
-# =========================
-@app.get("/logs")
-def get_logs():
-
-    cur.execute("""
-    SELECT * FROM logs
-    ORDER BY id DESC
-    """)
-
-    rows = cur.fetchall()
-
-    arr=[]
-
-    for r in rows:
-        arr.append({
-            "username":r[1],
-            "action":r[2],
-            "time":r[3]
-        })
-
-    return arr
+            Toast.makeText(
+                    this,
+                    "导出失败",
+                    Toast.LENGTH_LONG
+            ).show();
+        }
+    }
+}
