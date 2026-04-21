@@ -157,5 +157,20 @@ def all_users():
             "username":row[0],
             "currency":row[1]
         })
+@app.get("/delete_user")
+def delete_user(username:str):
 
-    return data
+    cursor.execute(
+        "delete from users where username=?",
+        (username,)
+    )
+
+    cursor.execute(
+        "delete from records where username=?",
+        (username,)
+    )
+
+    conn.commit()
+
+    return {"msg":"删除成功"}
+ 
