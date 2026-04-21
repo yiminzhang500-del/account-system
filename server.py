@@ -4,7 +4,7 @@ import sqlite3
 
 app = FastAPI()
 
-# 创建数据库
+# 数据库连接
 conn = sqlite3.connect("data.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -33,57 +33,69 @@ date TEXT
 conn.commit()
 
 
-# ---------------- 注册 ----------------
+# ================= 注册 =================
 class User(BaseModel):
-    username:str
-    password:str
+    username: str
+    password: str
+
 
 @app.post("/register")
-def register(data:User):
+def register(data: User):
+
     try:
+
         cursor.execute(
-            "insert into users(username,password) values(?,?)",
-            (data.username,data.password)
+            "INSERT INTO users(username,password) VALUES(?,?)",
+            (data.username, data.password)
         )
+
         conn.commit()
-        return {"msg":"注册成功"}
+
+        return {"msg": "注册成功"}
+
     except:
-        return {"msg":"账号已存在"}
+
+        return {"msg": "账号已存在"}
 
 
-# ---------------- 登录 ----------------
+# ================= 登录 =================
 @app.post("/login")
-def login(data:User):
+def login(data: User):
 
     cursor.execute(
-        "select * from users where username=? and password=?",
-        (data.username,data.password)
+        "SELECT * FROM users WHERE username=? AND password=?",
+        (data.username, data.password)
     )
 
-    if cursor.fetchone():
-        return {"msg":"登录成功"}
+    row = cursor.fetchone()
+
+    if row:
+        return {"msg": "登录成功"}
     else:
-        return {"msg":"账号密码错误"}
+        return {"msg": "账号密码错误"}
 
 
-# ---------------- 保存记录 ----------------
+# ================= 保存记录 =================
 class Record(BaseModel):
-    username:str
-    person:str
-    type:str
-    money:str
-    remark:str
-    date:str
+    username: str
+    person: str
+    type: str
+    money: str
+    remark: str
+    date: str
 
-@app.post("/save_record")
-def save_record(data:Record):
+
+# 安卓端调用的是 /add_record
+@app.post("/add_record")
+def add_record(data: Record):
 
     try:
+
         cursor.execute("""
-        insert into records
-        (username,person,type,money,remark,date)
-        values(?,?,?,?,?,?)
-        """,(
+        INSERT INTO records(
+        username,person,type,money,remark,date
+        ) VALUES(?,?,?,?,?,?)
+        """, (
             data.username,
             data.person,
             data.type,
@@ -94,34 +106,48 @@ def save_record(data:Record):
 
         conn.commit()
 
-        return {"msg":"保存成功"}
+        return {"msg": "成功"}
 
     except Exception as e:
-        return {"msg":str(e)}
+
+        return {"msg": str(e)}
 
 
-# ---------------- 获取记录 ----------------
+# 兼容旧版本接口 /save_record
+@app.post("/save_record")
+def save_record(data: Record):
+    return add_record(data)
+
+
+# ================= 获取记录 =================
 @app.get("/get_records")
-def get_records(username:str):
+def get_records(username: str):
 
     cursor.execute(
-        "select * from records where username=? order by id desc",
+        "SELECT * FROM records WHERE username=? ORDER BY id DESC",
         (username,)
     )
 
     rows = cursor.fetchall()
 
-    data = []
+    arr = []
 
     for row in rows:
-        data.append({
-            "id":row[0],
-            "username":row[1],
-            "person":row[2],
-            "type":row[3],
-            "money":row[4],
-            "remark":row[5],
-            "date":row[6]
+
+        arr.append({
+            "id": row[0],
+            "username": row[1],
+            "person": row[2],
+            "type": row[3],
+            "money": row[4],
+            "remark": row[5],
+            "date": row[6]
         })
 
-    return data
+    return arr
+
+
+# ================= 首页测试 =================
+@app.get("/")
+def home():
+    return {"msg": "server ok"}
