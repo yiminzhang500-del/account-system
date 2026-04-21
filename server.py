@@ -141,4 +141,21 @@ def get_records(username:str):
             "date":row[6]
         })
 
+    @app.get("/all_users")
+def all_users():
+
+    cursor.execute(
+        "select username,currency from users order by id desc"
+    )
+
+    rows = cursor.fetchall()
+
+    data = []
+
+    for row in rows:
+        data.append({
+            "username":row[0],
+            "currency":row[1]
+        })
+
     return data
