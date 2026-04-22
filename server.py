@@ -1,331 +1,104 @@
-# server.py
-from fastapi import FastAPI
-from pydantic import BaseModel
-import sqlite3
+# -*- coding: utf-8 -*-
+from flask import Flask, send_from_directory, request, jsonify
+import os
+import json
 from datetime import datetime
 
-app = FastAPI()
+# 初始化 Flask
+app = Flask(__name__)
 
-# ===============================
-# 数据库连接
-# ===============================
-conn = sqlite3.connect("data.db", check_same_thread=False)
-cursor = conn.cursor()
+# ====================== 配置 ======================
+# 数据存储文件
+DATA_FILE = "data.json"
+# 管理员账号密码（可自己修改）
+ADMIN_USER = "ADMIN"
+ADMIN_PWD = "123456"
 
-# ===============================
-# 用户表（企业授权版）
-# ===============================
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-username TEXT UNIQUE,
-password TEXT,
-currency TEXT DEFAULT 'CNY',
-role TEXT DEFAULT 'user',
-approved INTEGER DEFAULT 0,
-enabled INTEGER DEFAULT 1,
-expire_date TEXT DEFAULT '',
-device_id TEXT DEFAULT '',
-create_time TEXT DEFAULT '',
-last_login TEXT DEFAULT ''
-)
-""")
+# ================ 初始化数据文件 ================
+def init_data():
+    if not os.path.exists(DATA_FILE):
+        default_data = {
+            "expense": [],
+            "income": [],
+            "users": []
+        }
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(default_data, f, ensure_ascii=False, indent=2)
 
-# ===============================
-# 记录表
-# ===============================
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS records(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-username TEXT,
-person TEXT,
-type TEXT,
-money TEXT,
-remark TEXT,
-date TEXT
-)
-""")
+def load_data():
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-conn.commit()
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-# ===============================
-# 默认管理员账号
-# admin / 123456
-# ===============================
-cursor.execute("""
-INSERT OR IGNORE INTO users
-(username,password,currency,role,approved,enabled,create_time)
-VALUES
-('admin','123456','CNY','admin',1,1,datetime('now'))
-""")
-conn.commit()
+init_data()
 
-# ===============================
-# 数据模型
-# ===============================
-class User(BaseModel):
-    username:str
-    password:str
-    currency:str="CNY"
+# ====================== 页面路由 ======================
+@app.route('/')
+def index():
+    return send_from_directory(os.getcwd(), "index.html")
 
-class Record(BaseModel):
-    username:str
-    person:str
-    type:str
-    money:str
-    remark:str
-    date:str
-
-# ===============================
-# 注册申请
-# ===============================
-@app.post("/register")
-def register(data:User):
-
+# ====================== 登录接口 ======================
+@app.route('/api/login', methods=['POST'])
+def api_login():
     try:
-        cursor.execute("""
-        INSERT INTO users
-        (username,password,currency,role,approved,enabled,create_time)
-        VALUES(?,?,?,?,?,?,?)
-        """,(
-            data.username,
-            data.password,
-            data.currency,
-            "user",
-            0,
-            1,
-            str(datetime.now())[:19]
-        ))
+        data = request.get_json()
+        username = data.get("username", "")
+        password = data.get("password", "")
 
-        conn.commit()
-
-        return {"msg":"注册申请已提交，等待管理员审核"}
-
+        if username == ADMIN_USER and password == ADMIN_PWD:
+            return jsonify({"code": 0, "msg": "登录成功", "isAdmin": True})
+        else:
+            return jsonify({"code": -1, "msg": "账号或密码错误"})
     except:
-        return {"msg":"账号已存在"}
+        return jsonify({"code": -1, "msg": "参数错误"})
 
-# ===============================
-# 登录
-# ===============================
-@app.post("/login")
-def login(data:User):
-
-    cursor.execute("""
-    SELECT role,currency,approved,enabled,expire_date
-    FROM users
-    WHERE username=? AND password=?
-    """,(
-        data.username,
-        data.password
-    ))
-
-    row = cursor.fetchone()
-
-    if not row:
-        return {"msg":"账号密码错误"}
-
-    role = row[0]
-    currency = row[1]
-    approved = row[2]
-    enabled = row[3]
-    expire_date = row[4]
-
-    if approved == 0:
-        return {"msg":"账号待审核"}
-
-    if enabled == 0:
-        return {"msg":"账号已禁用"}
-
-    if expire_date != "":
-        try:
-            today = datetime.now().date()
-            exp = datetime.strptime(
-                expire_date,
-                "%Y-%m-%d"
-            ).date()
-
-            if today > exp:
-                return {"msg":"账号已到期"}
-
-        except:
-            pass
-
-    cursor.execute("""
-    UPDATE users
-    SET last_login=?
-    WHERE username=?
-    """,(
-        str(datetime.now())[:19],
-        data.username
-    ))
-
-    conn.commit()
-
-    return {
-        "msg":"登录成功",
-        "role":role,
-        "currency":currency
+# ====================== 提交报销 ======================
+@app.route('/api/add_expense', methods=['POST'])
+def add_expense():
+    data = load_data()
+    req = request.get_json()
+    exp = {
+        "type": "expense",
+        "报销人员": req.get("person"),
+        "金额": float(req.get("money")),
+        "备注": req.get("remark"),
+        "时间": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
+    data["expense"].append(exp)
+    save_data(data)
+    return jsonify({"code": 0, "msg": "保存成功"})
 
-# ===============================
-# 新增记录
-# ===============================
-@app.post("/add_record")
-def add_record(data:Record):
+# ====================== 提交收入 ======================
+@app.route('/api/add_income', methods=['POST'])
+def add_income():
+    data = load_data()
+    req = request.get_json()
+    inc = {
+        "type": "income",
+        "来源": req.get("person"),
+        "金额": float(req.get("money")),
+        "方式": req.get("type"),
+        "备注": req.get("remark"),
+        "时间": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    data["income"].append(inc)
+    save_data(data)
+    return jsonify({"code": 0, "msg": "保存成功"})
 
-    cursor.execute("""
-    INSERT INTO records
-    (username,person,type,money,remark,date)
-    VALUES(?,?,?,?,?,?)
-    """,(
-        data.username,
-        data.person,
-        data.type,
-        data.money,
-        data.remark,
-        data.date
-    ))
+# ====================== 获取所有数据 ======================
+@app.route('/api/get_all', methods=['POST'])
+def get_all():
+    data = load_data()
+    return jsonify({
+        "code": 0,
+        "expense": data["expense"],
+        "income": data["income"]
+    })
 
-    conn.commit()
-
-    return {"msg":"成功"}
-
-# ===============================
-# 获取记录
-# ===============================
-@app.get("/get_records")
-def get_records(username:str):
-
-    cursor.execute("""
-    SELECT * FROM records
-    WHERE username=?
-    ORDER BY id DESC
-    """,(username,))
-
-    rows = cursor.fetchall()
-
-    arr = []
-
-    for r in rows:
-        arr.append({
-            "id":r[0],
-            "username":r[1],
-            "person":r[2],
-            "type":r[3],
-            "money":r[4],
-            "remark":r[5],
-            "date":r[6]
-        })
-
-    return arr
-
-# ===============================
-# 删除单条记录
-# ===============================
-@app.get("/delete_record")
-def delete_record(id:int):
-
-    cursor.execute(
-        "DELETE FROM records WHERE id=?",
-        (id,)
-    )
-
-    conn.commit()
-
-    return {"msg":"删除成功"}
-
-# ===============================
-# 全部用户
-# ===============================
-@app.get("/all_users")
-def all_users():
-
-    cursor.execute("""
-    SELECT username,currency,role,
-    approved,enabled,expire_date,
-    create_time,last_login
-    FROM users
-    ORDER BY id DESC
-    """)
-
-    rows = cursor.fetchall()
-
-    arr = []
-
-    for r in rows:
-        arr.append({
-            "username":r[0],
-            "currency":r[1],
-            "role":r[2],
-            "approved":r[3],
-            "enabled":r[4],
-            "expire_date":r[5],
-            "create_time":r[6],
-            "last_login":r[7]
-        })
-
-    return arr
-
-# ===============================
-# 审核通过用户
-# ===============================
-@app.get("/approve_user")
-def approve_user(username:str):
-
-    cursor.execute("""
-    UPDATE users
-    SET approved=1
-    WHERE username=?
-    """,(username,))
-
-    conn.commit()
-
-    return {"msg":"审核成功"}
-
-# ===============================
-# 禁用/启用用户
-# ===============================
-@app.get("/toggle_user")
-def toggle_user(username:str):
-
-    cursor.execute("""
-    SELECT enabled FROM users
-    WHERE username=?
-    """,(username,))
-
-    row = cursor.fetchone()
-
-    val = 1
-
-    if row[0] == 1:
-        val = 0
-
-    cursor.execute("""
-    UPDATE users
-    SET enabled=?
-    WHERE username=?
-    """,(val,username))
-
-    conn.commit()
-
-    return {"msg":"操作成功"}
-
-# ===============================
-# 删除用户
-# ===============================
-@app.get("/delete_user")
-def delete_user(username:str):
-
-    cursor.execute(
-        "DELETE FROM users WHERE username=?",
-        (username,)
-    )
-
-    cursor.execute(
-        "DELETE FROM records WHERE username=?",
-        (username,)
-    )
-
-    conn.commit()
-
-    return {"msg":"删除成功"}
+# ====================== 启动服务 ======================
+if __name__ == '__main__':
+    # 监听 0.0.0.0:5000 外网可访问
+    app.run(host="0.0.0.0", port=5000, debug=False)
