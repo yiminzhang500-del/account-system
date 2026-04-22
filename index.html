@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工作易 | WorkEasy</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        body {
+            background: #f5f8fa;
+            padding: 20px;
+        }
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .title {
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .stat-bar {
+            display: flex;
+            justify-content: space-between;
+            background: #e6f7ff;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none; /* 默认隐藏 */
+        }
+        .stat-item {
+            text-align: center;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 12px;
+        }
+        .stat-value {
+            font-weight: bold;
+            color: #1890ff;
+            font-size: 16px;
+        }
+        input, select, button, textarea {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 15px;
+        }
+        button {
+            background: #1890ff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        .btn2 { background: #6c757d; }
+        .btn-success { background: #52c41a; }
+        .btn-export { background: #faad14; }
+        .btn-view { background: #13c2c2; }
+        .hide { display: none; }
+
+        .tab {
+            display: flex;
+            margin-bottom: 20px;
+            gap: 4px;
+        }
+        .tab button {
+            flex: 1;
+            padding: 10px;
+            font-size: 14px;
+        }
+
+        .tip {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 6px;
+        }
+
+        .autocomplete {
+            position: relative;
+        }
+        .autocomplete-items {
+            position: absolute;
+            border: 1px solid #e8e8e8;
+            background: white;
+            z-index: 99;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 150px;
+            overflow-y: auto;
+            border-radius: 4px;
+        }
+        .autocomplete-items div {
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+        .autocomplete-items div:hover {
+            background: #f5f5f5;
+        }
+
+        /* 查看数据 */
+        .filter-bar {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .filter-bar input, .filter-bar select {
+            padding: 8px;
+            font-size: 13px;
+            margin: 0;
+            border-radius: 4px;
+        }
+        .data-list {
+            max-height: 380px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+        .data-item {
+            padding: 10px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 13px;
+        }
+        .data-item span {
+            display: inline-block;
+            width: 24%;
+        }
+
+        /* 凭证预览 */
+        .voucher-preview {
+            width: 90px;
+            height: 90px;
+            object-fit: cover;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            margin: 6px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="title" id="page-title">工作易</div>
+
+    <!-- 统计（默认隐藏，登录后显示） -->
+    <div class="stat-bar" id="stat-bar">
+        <div class="stat-item">
+            <div class="stat-label" id="label-expense">总支出</div>
+            <div class="stat-value" id="stat-expense">0</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label" id="label-income">总收入</div>
+            <div class="stat-value" id="stat-income">0</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label" id="label-balance">余额</div>
+            <div class="stat-value" id="stat-balance">0</div>
+        </div>
+    </div>
+
+    <button onclick="toggleLang()" style="background: #888; margin-bottom:10px;" id="btn-lang">
+        切换语言 / Switch Language
+    </button>
+
+    <!-- 登录 -->
+    <div id="login-box">
+        <input id="login-user" placeholder="用户名 / Username" maxlength="16">
+        <input id="login-pwd" type="password" placeholder="密码 / Password" maxlength="20">
+        <label style="font-size:12px;" id="label-remember">
+            <input type="checkbox" id="remember-pwd"> 记住密码 / Remember Me
+        </label>
+        <button onclick="login()" id="btn-login">登录 / Login</button>
+        <button class="btn2" onclick="showRegister()" id="btn-register">注册 / Register</button>
+        <button class="btn2" onclick="showChangePwd()" id="btn-changepwd">修改密码 / Change Password</button>
+    </div>
+
+    <!-- 注册 -->
+    <div id="register-box" class="hide">
+        <input id="reg-user" placeholder="用户名 / Username" maxlength="16">
+        <input id="reg-pwd" type="password" placeholder="密码 / Password" maxlength="20">
+        <input id="reg-remark" placeholder="备注 / Remark" maxlength="50">
+        <button onclick="register()" id="btn-submit-reg">提交注册 / Submit</button>
+        <button class="btn2" onclick="backLogin()" id="btn-back">返回 / Back</button>
+    </div>
+
+    <!-- 主界面 -->
+    <div id="main-box" class="hide">
+        <div class="tab">
+            <button onclick="showPage('expense')" id="tab-expense">报销 / Expense</button>
+            <button onclick="showPage('income')" id="tab-income">收入 / Income</button>
+            <button onclick="showPage('view')" id="tab-view">查看数据 / Records</button>
+            <button onclick="showPage('admin')" id="admin-tab" class="hide">管理 / Admin</button>
+            <button onclick="logout()" id="btn-logout">退出 / Logout</button>
+        </div>
+
+        <!-- 报销 -->
+        <div id="expense-page">
+            <div class="tip" id="tip-expense">报销人员</div>
+            <div class="autocomplete">
+                <input id="expense-person" placeholder="报销人员" maxlength="20" oninput="filterPersons(this.value)">
+                <div id="person-list" class="autocomplete-items hide"></div>
+            </div>
+            <input id="expense-money" type="number" placeholder="金额 / Amount">
+            <textarea id="expense-remark" placeholder="事由 / Reason" maxlength="100"></textarea>
+            
+            <input type="file" id="expense-voucher" accept="image/*" onchange="previewVoucher('expense')">
+            <div id="expense-voucher-box"></div>
+
+            <button class="btn-success" onclick="submitExpense()" id="btn-submit-expense">提交报销 / Submit</button>
+            <button class="btn-export" onclick="exportExpense()" id="btn-export-expense">导出报销数据 / Export</button>
+        </div>
+
+        <!-- 收入 -->
+        <div id="income-page">
+            <div class="tip" id="tip-income">来源</div>
+            <div class="autocomplete">
+                <input id="income-person" placeholder="来源" maxlength="20" oninput="filterPersons(this.value)">
+                <div id="person-list2" class="autocomplete-items hide"></div>
+            </div>
+            <input id="income-money" type="number" placeholder="金额 / Amount">
+            <select id="income-type">
+                <option value="现金">现金 / Cash</option>
+                <option value="ATM">ATM</option>
+                <option value="银行">银行 / Bank</option>
+                <option value="其他">其他 / Other</option>
+            </select>
+            <textarea id="income-remark" placeholder="备注 / Remark" maxlength="100"></textarea>
+            
+            <input type="file" id="income-voucher" accept="image/*" onchange="previewVoucher('income')">
+            <div id="income-voucher-box"></div>
+
+            <button class="btn-success" onclick="submitIncome()" id="btn-submit-income">提交收入 / Submit</button>
+            <button class="btn-export" onclick="exportIncome()" id="btn-export-income">导出收入数据 / Export</button>
+        </div>
+
+        <!-- 查看数据 -->
+        <div id="view-page" class="hide">
+            <div class="filter-bar">
+                <select id="filter-type">
+                    <option value="all">全部 / All</option>
+                    <option value="expense">报销 / Expense</option>
+                    <option value="income">收入 / Income</option>
+                </select>
+                <input id="filter-person" placeholder="人员/来源 / Name" type="text">
+            </div>
+            <div class="filter-bar">
+                <input id="filter-min" placeholder="最小金额 / Min" type="number">
+                <input id="filter-max" placeholder="最大金额 / Max" type="number">
+            </div>
+            <button class="btn-view" onclick="refreshDataList()" id="btn-filter">筛选查看 / Filter</button>
+            <button class="btn-export" onclick="exportFiltered()" id="btn-export-filter">导出筛选结果 / Export</button>
+            <div class="data-list" id="data-list"></div>
+        </div>
+
+        <!-- 管理 -->
+        <div id="admin-page" class="hide">
+            <button onclick="loadUserList()" id="btn-userlist">用户列表 / User List</button>
+            <button onclick="loadAllData()" id="btn-stat">数据统计 / Statistics</button>
+            <button class="btn-export" onclick="exportAll()" id="btn-export-all">导出全部数据 / Export All</button>
+            <div id="admin-content"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let isCN = true;
+    let isAdmin = false;
+    let personList = ["张三", "李四", "王五"];
+    let expenseData = [];
+    let incomeData = [];
+
+    // 多语言配置
+    const lang = {
+        zh: {
+            title: "工作易",
+            totalExpense: "总支出",
+            totalIncome: "总收入",
+            balance: "余额",
+            remember: "记住密码",
+            login: "登录",
+            register: "注册",
+            changePwd: "修改密码",
+            back: "返回",
+            submitReg: "提交注册",
+            expense: "报销",
+            income: "收入",
+            records: "查看数据",
+            admin: "管理",
+            logout: "退出",
+            expensePerson: "报销人员",
+            amount: "金额",
+            reason: "事由",
+            source: "来源",
+            remark: "备注",
+            submitExpense: "提交报销",
+            submitIncome: "提交收入",
+            exportExpense: "导出报销数据",
+            exportIncome: "导出收入数据",
+            all: "全部",
+            min: "最小金额",
+            max: "最大金额",
+            filter: "筛选查看",
+            exportFilter: "导出筛选结果",
+            userList: "用户列表",
+            statistics: "数据统计",
+            exportAll: "导出全部数据",
+            cash: "现金",
+            bank: "银行",
+            other: "其他",
+            noData: "暂无数据",
+            alert1: "请输入账号密码",
+            alert2: "管理员登录成功",
+            alert3: "登录成功",
+            alert4: "注册已提交，等待审核",
+            alert5: "修改密码功能",
+            alert6: "请填写报销人员和金额",
+            alert7: "报销提交成功",
+            alert8: "请填写来源和金额",
+            alert9: "收入提交成功",
+            alert10: "无数据可导出",
+            alert11: "无报销数据",
+            alert12: "无收入数据",
+            alert13: "无数据"
+        },
+        en: {
+            title: "WorkEasy",
+            totalExpense: "Total Expense",
+            totalIncome: "Total Income",
+            balance: "Balance",
+            remember: "Remember Me",
+            login: "Login",
+            register: "Register",
+            changePwd: "Change Password",
+            back: "Back",
+            submitReg: "Submit",
+            expense: "Expense",
+            income: "Income",
+            records: "Records",
+            admin: "Admin",
+            logout: "Logout",
+            expensePerson: "Person",
+            amount: "Amount",
+            reason: "Reason",
+            source: "Source",
+            remark: "Remark",
+            submitExpense: "Submit",
+            submitIncome: "Submit",
+            exportExpense: "Export",
+            exportIncome: "Export",
+            all: "All",
+            min: "Min",
+            max: "Max",
+            filter: "Filter",
+            exportFilter: "Export",
+            userList: "User List",
+            statistics: "Statistics",
+            exportAll: "Export All",
+            cash: "Cash",
+            bank: "Bank",
+            other: "Other",
+            noData: "No Data",
+            alert1: "Please enter username and password",
+            alert2: "Admin login success",
+            alert3: "Login success",
+            alert4: "Registration submitted, waiting for review",
+            alert5: "Change password function",
+            alert6: "Please fill in person and amount",
+            alert7: "Expense submitted",
+            alert8: "Please fill in source and amount",
+            alert9: "Income submitted",
+            alert10: "No data to export",
+            alert11: "No expense data",
+            alert12: "No income data",
+            alert13: "No data"
+        }
+    };
+
+    // 切换语言
+    function toggleLang() {
+        isCN = !isCN;
+        updateLang();
+    }
+
+    // 更新所有界面文字
+    function updateLang() {
+        const t = isCN ? lang.zh : lang.en;
+        document.getElementById("page-title").innerText = t.title;
+        document.getElementById("label-expense").innerText = t.totalExpense;
+        document.getElementById("label-income").innerText = t.totalIncome;
+        document.getElementById("label-balance").innerText = t.balance;
+        document.getElementById("label-remember").innerHTML = `<input type="checkbox" id="remember-pwd"> ${t.remember}`;
+        document.getElementById("btn-login").innerText = t.login;
+        document.getElementById("btn-register").innerText = t.register;
+        document.getElementById("btn-changepwd").innerText = t.changePwd;
+        document.getElementById("btn-back").innerText = t.back;
+        document.getElementById("btn-submit-reg").innerText = t.submitReg;
+        document.getElementById("tab-expense").innerText = t.expense;
+        document.getElementById("tab-income").innerText = t.income;
+        document.getElementById("tab-view").innerText = t.records;
+        document.getElementById("admin-tab").innerText = t.admin;
+        document.getElementById("btn-logout").innerText = t.logout;
+        document.getElementById("tip-expense").innerText = t.expensePerson;
+        document.getElementById("expense-person").placeholder = t.expensePerson;
+        document.getElementById("expense-money").placeholder = t.amount;
+        document.getElementById("expense-remark").placeholder = t.reason;
+        document.getElementById("tip-income").innerText = t.source;
+        document.getElementById("income-person").placeholder = t.source;
+        document.getElementById("income-money").placeholder = t.amount;
+        document.getElementById("income-remark").placeholder = t.remark;
+        document.getElementById("btn-submit-expense").innerText = t.submitExpense;
+        document.getElementById("btn-submit-income").innerText = t.submitIncome;
+        document.getElementById("btn-export-expense").innerText = t.exportExpense;
+        document.getElementById("btn-export-income").innerText = t.exportIncome;
+        document.getElementById("btn-filter").innerText = t.filter;
+        document.getElementById("btn-export-filter").innerText = t.exportFilter;
+        document.getElementById("btn-userlist").innerText = t.userList;
+        document.getElementById("btn-stat").innerText = t.statistics;
+        document.getElementById("btn-export-all").innerText = t.exportAll;
+        document.getElementById("filter-min").placeholder = t.min;
+        document.getElementById("filter-max").placeholder = t.max;
+        document.getElementById("filter-person").placeholder = t.expensePerson + "/" + t.source;
+        
+        const options = document.querySelectorAll("#income-type option");
+        options[0].innerText = t.cash;
+        options[2].innerText = t.bank;
+        options[3].innerText = t.other;
+        
+        const filterOpts = document.querySelectorAll("#filter-type option");
+        filterOpts[0].innerText = t.all;
+        filterOpts[1].innerText = t.expense;
+        filterOpts[2].innerText = t.income;
+    }
+
+    // 凭证预览
+    function previewVoucher(type) {
+        const fileInput = document.getElementById(type + '-voucher');
+        const box = document.getElementById(type + '-voucher-box');
+        box.innerHTML = '';
+        if (fileInput.files.length > 0) {
+            const img = document.createElement('img');
+            img.className = 'voucher-preview';
+            img.src = URL.createObjectURL(fileInput.files[0]);
+            box.appendChild(img);
+        }
+    }
+
+    // 更新统计
+    function updateStats() {
+        const totalExp = expenseData.reduce((s, i) => s + i.金额, 0);
+        const totalInc = incomeData.reduce((s, i) => s + i.金额, 0);
+        const balance = totalInc - totalExp;
+        document.getElementById("stat-expense").innerText = totalExp;
+        document.getElementById("stat-income").innerText = totalInc;
+        document.getElementById("stat-balance").innerText = balance;
+    }
+
+    // 自动联想
+    function filterPersons(val) {
+        const list = document.getElementById("person-list");
+        const list2 = document.getElementById("person-list2");
+        list.innerHTML = "";
+        list2.innerHTML = "";
+        if (!val) {
+            list.classList.add("hide");
+            list2.classList.add("hide");
+            return;
+        }
+        let arr = personList.filter(p => p.includes(val));
+        arr.forEach(p => {
+            let div = document.createElement("div");
+            div.innerText = p;
+            div.onclick = () => {
+                document.getElementById("expense-person").value = p;
+                document.getElementById("income-person").value = p;
+                list.classList.add("hide");
+                list2.classList.add("hide");
+            };
+            list.appendChild(div.cloneNode(true));
+            list2.appendChild(div);
+        });
+        list.classList.remove("hide");
+        list2.classList.remove("hide");
+    }
+
+    document.addEventListener("click", (e) => {
+        if (!e.target.closest(".autocomplete")) {
+            document.getElementById("person-list").classList.add("hide");
+            document.getElementById("person-list2").classList.add("hide");
+        }
+    });
+
+    // 登录
+    function login() {
+        const t = isCN ? lang.zh : lang.en;
+        const user = document.getElementById("login-user").value.trim();
+        const pwd = document.getElementById("login-pwd").value.trim();
+        if (!user || !pwd) {
+            alert(t.alert1);
+            return;
+        }
+        if (user === "ADMIN" && pwd === "123456") {
+            isAdmin = true;
+            alert(t.alert2);
+        } else {
+            isAdmin = false;
+            alert(t.alert3);
+        }
+        showMain();
+    }
+
+    function showRegister() {
+        document.getElementById("login-box").classList.add("hide");
+        document.getElementById("register-box").classList.remove("hide");
+    }
+    function backLogin() {
+        document.getElementById("login-box").classList.remove("hide");
+        document.getElementById("register-box").classList.add("hide");
+    }
+    function register() {
+        const t = isCN ? lang.zh : lang.en;
+        alert(t.alert4);
+        backLogin();
+    }
+    function showChangePwd() {
+        const t = isCN ? lang.zh : lang.en;
+        alert(t.alert5);
+    }
+    function logout() {
+        location.reload();
+    }
+
+    function showMain() {
+        document.getElementById("login-box").classList.add("hide");
+        document.getElementById("main-box").classList.remove("hide");
+        document.getElementById("stat-bar").style.display = "flex";
+        if (isAdmin) {
+            document.getElementById("admin-tab").classList.remove("hide");
+        }
+        showPage("expense");
+        updateStats();
+    }
+
+    function showPage(page) {
+        document.getElementById("expense-page").classList.add("hide");
+        document.getElementById("income-page").classList.add("hide");
+        document.getElementById("view-page").classList.add("hide");
+        document.getElementById("admin-page").classList.add("hide");
+        document.getElementById(page + "-page").classList.remove("hide");
+        if (page === "view") refreshDataList();
+    }
+
+    // 提交报销
+    function submitExpense() {
+        const t = isCN ? lang.zh : lang.en;
+        const person = document.getElementById("expense-person").value.trim();
+        const money = document.getElementById("expense-money").value.trim();
+        const remark = document.getElementById("expense-remark").value.trim();
+        if (!person || !money) {
+            alert(t.alert6);
+            return;
+        }
+        expenseData.push({
+            type: "expense",
+            报销人员: person,
+            金额: Number(money),
+            备注: remark,
+            时间: new Date().toLocaleString()
+        });
+        if (!personList.includes(person)) personList.push(person);
+        alert(t.alert7);
+        document.getElementById("expense-person").value = "";
+        document.getElementById("expense-money").value = "";
+        document.getElementById("expense-remark").value = "";
+        document.getElementById("expense-voucher-box").innerHTML = "";
+        updateStats();
+    }
+
+    // 提交收入
+    function submitIncome() {
+        const t = isCN ? lang.zh : lang.en;
+        const person = document.getElementById("income-person").value.trim();
+        const money = document.getElementById("income-money").value.trim();
+        const type = document.getElementById("income-type").value;
+        const remark = document.getElementById("income-remark").value.trim();
+        if (!person || !money) {
+            alert(t.alert8);
+            return;
+        }
+        incomeData.push({
+            type: "income",
+            来源: person,
+            金额: Number(money),
+            方式: type,
+            备注: remark,
+            时间: new Date().toLocaleString()
+        });
+        if (!personList.includes(person)) personList.push(person);
+        alert(t.alert9);
+        document.getElementById("income-person").value = "";
+        document.getElementById("income-money").value = "";
+        document.getElementById("income-remark").value = "";
+        document.getElementById("income-voucher-box").innerHTML = "";
+        updateStats();
+    }
+
+    // 查看数据
+    function refreshDataList() {
+        const t = isCN ? lang.zh : lang.en;
+        const fType = document.getElementById("filter-type").value;
+        const fPerson = document.getElementById("filter-person").value.trim();
+        const fMin = Number(document.getElementById("filter-min").value) || 0;
+        const fMax = Number(document.getElementById("filter-max").value) || 99999999;
+
+        let list = [];
+        if (fType === "all" || fType === "expense") list = [...list, ...expenseData];
+        if (fType === "all" || fType === "income") list = [...list, ...incomeData];
+
+        list = list.filter(item => {
+            const name = item.报销人员 || item.来源 || "";
+            if (fPerson && !name.includes(fPerson)) return false;
+            if (item.金额 < fMin) return false;
+            if (item.金额 > fMax) return false;
+            return true;
+        });
+
+        const html = list.map(item => {
+            const name = item.报销人员 || item.来源 || "";
+            const typeText = item.type === 'expense' ? (isCN ? '报销' : 'Expense') : (isCN ? '收入' : 'Income');
+            return `
+            <div class="data-item">
+                <span>${typeText}</span>
+                <span>${name}</span>
+                <span>${item.金额}元</span>
+                <span>${item.时间}</span>
+            </div>
+        `}).join("");
+
+        document.getElementById("data-list").innerHTML = html || `<div style='padding:10px;text-align:center;color:#999'>${t.noData}</div>`;
+    }
+
+    // 导出筛选
+    function exportFiltered() {
+        const t = isCN ? lang.zh : lang.en;
+        const fType = document.getElementById("filter-type").value;
+        const fPerson = document.getElementById("filter-person").value.trim();
+        const fMin = Number(document.getElementById("filter-min").value) || 0;
+        const fMax = Number(document.getElementById("filter-max").value) || 99999999;
+
+        let list = [];
+        if (fType === "all" || fType === "expense") list = [...list, ...expenseData];
+        if (fType === "all" || fType === "income") list = [...list, ...incomeData];
+
+        list = list.filter(item => {
+            const name = item.报销人员 || item.来源 || "";
+            if (fPerson && !name.includes(fPerson)) return false;
+            if (item.金额 < fMin) return false;
+            if (item.金额 > fMax) return false;
+            return true;
+        });
+
+        if (list.length === 0) {
+            alert(t.alert10);
+            return;
+        }
+        const ws = XLSX.utils.json_to_sheet(list);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Records");
+        XLSX.writeFile(wb, "records.xlsx");
+    }
+
+    // 导出
+    function exportExpense() {
+        const t = isCN ? lang.zh : lang.en;
+        if (expenseData.length === 0) {
+            alert(t.alert11);
+            return;
+        }
+        const ws = XLSX.utils.json_to_sheet(expenseData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Expense");
+        XLSX.writeFile(wb, "expense.xlsx");
+    }
+    function exportIncome() {
+        const t = isCN ? lang.zh : lang.en;
+        if (incomeData.length === 0) {
+            alert(t.alert12);
+            return;
+        }
+        const ws = XLSX.utils.json_to_sheet(incomeData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Income");
+        XLSX.writeFile(wb, "income.xlsx");
+    }
+    function exportAll() {
+        const t = isCN ? lang.zh : lang.en;
+        const all = [...expenseData, ...incomeData];
+        if (all.length === 0) {
+            alert(t.alert13);
+            return;
+        }
+        const ws = XLSX.utils.json_to_sheet(all);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "All Data");
+        XLSX.writeFile(wb, "all_data.xlsx");
+    }
+
+    function loadUserList() {
+        const t = isCN ? lang.zh : lang.en;
+        document.getElementById("admin-content").innerHTML = `<p>${t.userList}</p>`;
+    }
+    function loadAllData() {
+        const t = isCN ? lang.zh : lang.en;
+        const totalExp = expenseData.reduce((s, i) => s + i.金额, 0);
+        const totalInc = incomeData.reduce((s, i) => s + i.金额, 0);
+        document.getElementById("admin-content").innerHTML = `<p>${t.totalExpense}：${totalExp} 元</p><p>${t.totalIncome}：${totalInc} 元</p>`;
+    }
+
+    // 初始化语言
+    updateLang();
+</script>
+</body>
+</html>
