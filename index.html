@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>工作易 | WorkEasy</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         * {
@@ -281,11 +282,16 @@
 </div>
 
 <script>
+    // 初始化 Supabase 客户端（仅定义一次，解决重复声明问题）
+    const supabaseUrl = 'https://phefzwoytbvjjzzqkxpn.supabase.co';
+    const supabaseKey = 'phefzwoytbvjjzzqkxpn';
+    const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+    // 全局变量
+    let currentUserId = 1; // 默认使用管理员ID
     let isCN = true;
     let isAdmin = false;
     let personList = ["张三", "李四", "王五"];
-    let expenseData = [];
-    let incomeData = [];
 
     // 多语言配置
     const lang = {
@@ -329,7 +335,7 @@
             alert1: "请输入账号密码",
             alert2: "管理员登录成功",
             alert3: "登录成功",
-            alert4: "注册已提交，等待审核",
+            alert4: "注册成功",
             alert5: "修改密码功能",
             alert6: "请填写报销人员和金额",
             alert7: "报销提交成功",
@@ -380,7 +386,7 @@
             alert1: "Please enter username and password",
             alert2: "Admin login success",
             alert3: "Login success",
-            alert4: "Registration submitted, waiting for review",
+            alert4: "Register success",
             alert5: "Change password function",
             alert6: "Please fill in person and amount",
             alert7: "Expense submitted",
@@ -462,16 +468,6 @@
         }
     }
 
-    // 更新统计
-    function updateStats() {
-        const totalExp = expenseData.reduce((s, i) => s + i.金额, 0);
-        const totalInc = incomeData.reduce((s, i) => s + i.金额, 0);
-        const balance = totalInc - totalExp;
-        document.getElementById("stat-expense").innerText = totalExp;
-        document.getElementById("stat-income").innerText = totalInc;
-        document.getElementById("stat-balance").innerText = balance;
-    }
-
     // 自动联想
     function filterPersons(val) {
         const list = document.getElementById("person-list");
@@ -507,8 +503,8 @@
         }
     });
 
-    // 登录
-    function login() {
+    // 登录（连接Supabase）
+    async function login() {
         const t = isCN ? lang.zh : lang.en;
         const user = document.getElementById("login-user").value.trim();
         const pwd = document.getElementById("login-pwd").value.trim();
@@ -516,13 +512,23 @@
             alert(t.alert1);
             return;
         }
-        if (user === "ADMIN" && pwd === "123456") {
-            isAdmin = true;
-            alert(t.alert2);
-        } else {
-            isAdmin = false;
-            alert(t.alert3);
+
+        // 查询数据库用户（使用重命名后的supabaseClient，避免重复）
+        const { data: userData, error } = await supabaseClient
+            .from('users')
+            .select('*')
+            .eq('username', user)
+            .eq('password', pwd)
+            .single();
+
+        if (error || !userData) {
+            alert(isCN ? '用户名或密码错误' : 'Username or password error');
+            return;
         }
+
+        currentUserId = userData.id;
+        isAdmin = userData.is_admin;
+        alert(isAdmin ? t.alert2 : t.alert3);
         showMain();
     }
 
@@ -530,19 +536,42 @@
         document.getElementById("login-box").classList.add("hide");
         document.getElementById("register-box").classList.remove("hide");
     }
+
     function backLogin() {
         document.getElementById("login-box").classList.remove("hide");
         document.getElementById("register-box").classList.add("hide");
     }
-    function register() {
+
+    // 注册（写入数据库）
+    async function register() {
         const t = isCN ? lang.zh : lang.en;
+        const username = document.getElementById("reg-user").value.trim();
+        const password = document.getElementById("reg-pwd").value.trim();
+        const remark = document.getElementById("reg-remark").value.trim();
+
+        if (!username || !password) {
+            alert(isCN ? '请填写用户名密码' : 'Fill username & password');
+            return;
+        }
+
+        const { error } = await supabaseClient
+            .from('users')
+            .insert([{ username, password, remark, is_admin: false }]);
+
+        if (error) {
+            alert('注册失败：' + error.message);
+            return;
+        }
+
         alert(t.alert4);
         backLogin();
     }
+
     function showChangePwd() {
         const t = isCN ? lang.zh : lang.en;
         alert(t.alert5);
     }
+
     function logout() {
         location.reload();
     }
@@ -567,62 +596,105 @@
         if (page === "view") refreshDataList();
     }
 
-    // 提交报销
-    function submitExpense() {
+    // 提交报销（写入数据库）
+    async function submitExpense() {
         const t = isCN ? lang.zh : lang.en;
         const person = document.getElementById("expense-person").value.trim();
         const money = document.getElementById("expense-money").value.trim();
         const remark = document.getElementById("expense-remark").value.trim();
+        
         if (!person || !money) {
             alert(t.alert6);
             return;
         }
-        expenseData.push({
-            type: "expense",
-            报销人员: person,
-            金额: Number(money),
-            备注: remark,
-            时间: new Date().toLocaleString()
-        });
+
+        const { error } = await supabaseClient
+            .from('expenses')
+            .insert([{
+                person,
+                amount: Number(money),
+                remark,
+                user_id: currentUserId
+            }]);
+
+        if (error) {
+            alert('提交失败：' + error.message);
+            return;
+        }
+
         if (!personList.includes(person)) personList.push(person);
         alert(t.alert7);
+        
         document.getElementById("expense-person").value = "";
         document.getElementById("expense-money").value = "";
         document.getElementById("expense-remark").value = "";
         document.getElementById("expense-voucher-box").innerHTML = "";
+        
         updateStats();
     }
 
-    // 提交收入
-    function submitIncome() {
+    // 提交收入（写入数据库）
+    async function submitIncome() {
         const t = isCN ? lang.zh : lang.en;
         const person = document.getElementById("income-person").value.trim();
         const money = document.getElementById("income-money").value.trim();
         const type = document.getElementById("income-type").value;
         const remark = document.getElementById("income-remark").value.trim();
+        
         if (!person || !money) {
             alert(t.alert8);
             return;
         }
-        incomeData.push({
-            type: "income",
-            来源: person,
-            金额: Number(money),
-            方式: type,
-            备注: remark,
-            时间: new Date().toLocaleString()
-        });
+
+        const { error } = await supabaseClient
+            .from('incomes')
+            .insert([{
+                source: person,
+                amount: Number(money),
+                type,
+                remark,
+                user_id: currentUserId
+            }]);
+
+        if (error) {
+            alert('提交失败：' + error.message);
+            return;
+        }
+
         if (!personList.includes(person)) personList.push(person);
         alert(t.alert9);
+        
         document.getElementById("income-person").value = "";
         document.getElementById("income-money").value = "";
         document.getElementById("income-remark").value = "";
         document.getElementById("income-voucher-box").innerHTML = "";
+        
         updateStats();
     }
 
-    // 查看数据
-    function refreshDataList() {
+    // 更新统计（从数据库读取）
+    async function updateStats() {
+        const { data: expData } = await supabaseClient
+            .from('expenses')
+            .select('amount')
+            .eq('user_id', currentUserId);
+        
+        const { data: incData } = await supabaseClient
+            .from('incomes')
+            .select('amount')
+            .eq('user_id', currentUserId);
+
+        const totalExp = expData?.reduce((s, i) => s + Number(i.amount), 0) || 0;
+        const totalInc = incData?.reduce((s, i) => s + Number(i.amount), 0) || 0;
+        const balance = totalInc - totalExp;
+
+        document.getElementById("stat-expense").innerText = totalExp.toFixed(2);
+        document.getElementById("stat-income").innerText = totalInc.toFixed(2);
+        document.getElementById("stat-balance").innerText = balance.toFixed(2);
+    }
+
+    // 查看数据（从数据库读取）
+    async function refreshDataList() {
         const t = isCN ? lang.zh : lang.en;
         const fType = document.getElementById("filter-type").value;
         const fPerson = document.getElementById("filter-person").value.trim();
@@ -630,19 +702,47 @@
         const fMax = Number(document.getElementById("filter-max").value) || 99999999;
 
         let list = [];
-        if (fType === "all" || fType === "expense") list = [...list, ...expenseData];
-        if (fType === "all" || fType === "income") list = [...list, ...incomeData];
 
-        list = list.filter(item => {
-            const name = item.报销人员 || item.来源 || "";
-            if (fPerson && !name.includes(fPerson)) return false;
-            if (item.金额 < fMin) return false;
-            if (item.金额 > fMax) return false;
-            return true;
-        });
+        if (fType === "all" || fType === "expense") {
+            let q = supabaseClient
+                .from('expenses')
+                .select('*')
+                .eq('user_id', currentUserId)
+                .gte('amount', fMin)
+                .lte('amount', fMax);
+            
+            if (fPerson) q = q.ilike('person', `%${fPerson}%`);
+            const { data } = await q;
+            if (data) list = list.concat(data.map(i => ({
+                type: 'expense',
+                报销人员: i.person,
+                金额: i.amount,
+                备注: i.remark,
+                时间: new Date(i.created_at).toLocaleString()
+            })));
+        }
+
+        if (fType === "all" || fType === "income") {
+            let q = supabaseClient
+                .from('incomes')
+                .select('*')
+                .eq('user_id', currentUserId)
+                .gte('amount', fMin)
+                .lte('amount', fMax);
+            
+            if (fPerson) q = q.ilike('source', `%${fPerson}%`);
+            const { data } = await q;
+            if (data) list = list.concat(data.map(i => ({
+                type: 'income',
+                来源: i.source,
+                金额: i.amount,
+                备注: i.remark,
+                时间: new Date(i.created_at).toLocaleString()
+            })));
+        }
 
         const html = list.map(item => {
-            const name = item.报销人员 || item.来源 || "";
+            const name = item.报销人员 || item.来源;
             const typeText = item.type === 'expense' ? (isCN ? '报销' : 'Expense') : (isCN ? '收入' : 'Income');
             return `
             <div class="data-item">
@@ -656,84 +756,60 @@
         document.getElementById("data-list").innerHTML = html || `<div style='padding:10px;text-align:center;color:#999'>${t.noData}</div>`;
     }
 
-    // 导出筛选
-    function exportFiltered() {
+    // 导出功能
+    async function exportFiltered() {
         const t = isCN ? lang.zh : lang.en;
-        const fType = document.getElementById("filter-type").value;
-        const fPerson = document.getElementById("filter-person").value.trim();
-        const fMin = Number(document.getElementById("filter-min").value) || 0;
-        const fMax = Number(document.getElementById("filter-max").value) || 99999999;
-
-        let list = [];
-        if (fType === "all" || fType === "expense") list = [...list, ...expenseData];
-        if (fType === "all" || fType === "income") list = [...list, ...incomeData];
-
-        list = list.filter(item => {
-            const name = item.报销人员 || item.来源 || "";
-            if (fPerson && !name.includes(fPerson)) return false;
-            if (item.金额 < fMin) return false;
-            if (item.金额 > fMax) return false;
-            return true;
-        });
-
-        if (list.length === 0) {
-            alert(t.alert10);
-            return;
-        }
-        const ws = XLSX.utils.json_to_sheet(list);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Records");
-        XLSX.writeFile(wb, "records.xlsx");
+        await refreshDataList();
+        alert(t.alert10);
     }
 
-    // 导出
-    function exportExpense() {
+    async function exportExpense() {
         const t = isCN ? lang.zh : lang.en;
-        if (expenseData.length === 0) {
-            alert(t.alert11);
-            return;
-        }
-        const ws = XLSX.utils.json_to_sheet(expenseData);
+        const { data } = await supabaseClient.from('expenses').select('*').eq('user_id', currentUserId);
+        if (!data || data.length === 0) { alert(t.alert11); return; }
+        const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Expense");
         XLSX.writeFile(wb, "expense.xlsx");
     }
-    function exportIncome() {
+
+    async function exportIncome() {
         const t = isCN ? lang.zh : lang.en;
-        if (incomeData.length === 0) {
-            alert(t.alert12);
-            return;
-        }
-        const ws = XLSX.utils.json_to_sheet(incomeData);
+        const { data } = await supabaseClient.from('incomes').select('*').eq('user_id', currentUserId);
+        if (!data || data.length === 0) { alert(t.alert12); return; }
+        const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Income");
         XLSX.writeFile(wb, "income.xlsx");
     }
-    function exportAll() {
+
+    async function exportAll() {
         const t = isCN ? lang.zh : lang.en;
-        const all = [...expenseData, ...incomeData];
-        if (all.length === 0) {
-            alert(t.alert13);
-            return;
-        }
+        const { data: exp } = await supabaseClient.from('expenses').select('*').eq('user_id', currentUserId);
+        const { data: inc } = await supabaseClient.from('incomes').select('*').eq('user_id', currentUserId);
+        const all = [...(exp||[]), ...(inc||[])];
+        if (all.length === 0) { alert(t.alert13); return; }
         const ws = XLSX.utils.json_to_sheet(all);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "All Data");
         XLSX.writeFile(wb, "all_data.xlsx");
     }
 
-    function loadUserList() {
+    async function loadUserList() {
         const t = isCN ? lang.zh : lang.en;
-        document.getElementById("admin-content").innerHTML = `<p>${t.userList}</p>`;
-    }
-    function loadAllData() {
-        const t = isCN ? lang.zh : lang.en;
-        const totalExp = expenseData.reduce((s, i) => s + i.金额, 0);
-        const totalInc = incomeData.reduce((s, i) => s + i.金额, 0);
-        document.getElementById("admin-content").innerHTML = `<p>${t.totalExpense}：${totalExp} 元</p><p>${t.totalIncome}：${totalInc} 元</p>`;
+        const { data } = await supabaseClient.from('users').select('username, remark, created_at');
+        document.getElementById("admin-content").innerText = JSON.stringify(data, null, 2);
     }
 
-    // 初始化语言
+    async function loadAllData() {
+        const { data: exp } = await supabaseClient.from('expenses').select('amount').eq('user_id', currentUserId);
+        const { data: inc } = await supabaseClient.from('incomes').select('amount').eq('user_id', currentUserId);
+        const totalExp = exp?.reduce((s,i)=>s+Number(i.amount),0)||0;
+        const totalInc = inc?.reduce((s,i)=>s+Number(i.amount),0)||0;
+        document.getElementById("admin-content").innerHTML = `总支出：${totalExp} 元<br>总收入：${totalInc} 元`;
+    }
+
+    // 初始化
     updateLang();
 </script>
 </body>
